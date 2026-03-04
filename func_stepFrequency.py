@@ -14,7 +14,8 @@ def plt_regression(lane, com_data, lf_data, rf_data, plot='off'):
     Testline_Lane = np.array([com_data[lane][0][1,:]] + [com_data[lane][1][1,:]])
     Line_Lane = np.array([Testline_Lane[:,0]] + [Testline_Lane[:,-1]])
     LL = abs(Line_Lane[1,:] - Line_Lane[0,:])
-    slope, intercept, r_value, p_value, std_err = linregress((Line_Lane[:,0], Line_Lane[:,1]))
+    #slope, intercept, r_value, p_value, std_err = linregress((Line_Lane[:,0], Line_Lane[:,1]))
+    slope, intercept, r_value, p_value, std_err = linregress(Line_Lane[:,0], Line_Lane[:,1])
     
     if plot == 'show':
         print("---- Regression line ----")
@@ -169,10 +170,12 @@ def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off'):
 
     #find minima 
     RF_z_Lane_transform = rf_data[lane][2]*-1 #weil wir die minima brauchen, die Funktion aber nur peaks finden kann
-    minima_RF, _ = find_peaks(RF_z_Lane_transform, height=-0.1, width=30, distance = 40) #!# width & height
-    
+    minima_RF, _ = find_peaks(RF_z_Lane_transform, height=-0.1, width=30, distance = 40) #!# width & height OLD
+    #minima_RF, _ = find_peaks(RF_z_Lane_transform, height=-0.1, width=30, distance = (1/8) * len(RF_z_Lane_transform)) #!# width & height NEW
+
     LF_z_Lane_transform = lf_data[lane][2]*-1 #weil wir die minima brauchen, die Funktion aber nur peaks finden kann
-    minima_LF, _ = find_peaks(LF_z_Lane_transform, height=-0.1, width=30, distance = 40) #!# width & height
+    minima_LF, _ = find_peaks(LF_z_Lane_transform, height=-0.1, width=30, distance = 40) #!# width & height OLD
+    #minima_LF, _ = find_peaks(LF_z_Lane_transform, height=-0.1, width=30, distance = (1/8) * len(LF_z_Lane_transform)) #!# width & height NEW
     
     
     # Plot peaks and minima for control 
@@ -225,6 +228,12 @@ def intersect(lane, rf_data, lf_data, minima_RF, minima_LF, plot = "off"):
     peaks_th_l, _ = find_peaks(lf_data_trans, height = -0.005)
 
     if plot == "show":
+        
+        #testing why are some nans???
+        if np.any(np.isnan(rf_data_trans)) or np.any(np.isnan(lf_data_trans)):
+            print("rf_data", minima_RF) #nans????
+            print("lf_data", minima_LF)
+        
         fig, (ax1, ax2)= plt.subplots(2,1)
         ax1.plot(rf_data_trans)
         ax1.plot(peaks_th_r, rf_data_trans[peaks_th_r], "x")
@@ -555,7 +564,8 @@ def get_frames(com, subject, test_type):
         #8/27/25 --> may need to redo to check values between start and end lanes...
         if sel == 9.999 and next != 9.999: #start of a lane
             lane_idxs.append(int(idx))        
-        if sel != 9.999 and next == 9.999: #end of a lane
+        #if sel != 9.999 and next == 9.999: #end of a lane
+        if (sel != 9.999 and next == 9.999) and (lane_idxs): #don't add an "end" unless there's at east one sstart 9/4/25
             lane_idxs.append(int(idx))
             lane_count += 1
             
@@ -568,7 +578,10 @@ def get_frames(com, subject, test_type):
     if len(lane_idxs) % 2 != 0: 
         lane_idxs = lane_idxs[:-1]
 
+    #TODO: just take first 6 lanes
+    
     lane_idxs_re = np.reshape(lane_idxs, (-1, 2)).astype(int) #[[start1, end1], [start2,end2]...]
+    #print(lane_idxs_re)
     lane_idxs_re_df = pd.DataFrame(lane_idxs_re)
     lane_number = np.array(range(len(lane_idxs_re_df))) + 1
     subj_list = [subject] * len(lane_idxs_re_df)
