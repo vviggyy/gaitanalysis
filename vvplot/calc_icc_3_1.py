@@ -1,10 +1,10 @@
 """
-Compute ICC(1,1) + 95% CI for each Xsens gait metric, W1 vs W2,
+Compute ICC(3,1) + 95% CI for each Xsens gait metric, W1 vs W2,
 split by disease group (Ataxia / PD), with and without controls.
 
 Outputs two CSVs:
-  - icc11_all_subjects.csv       (all subjects)
-  - icc11_patients_only.csv      (controls excluded, Control==0)
+  - icc31_all_subjects.csv       (all subjects)
+  - icc31_patients_only.csv      (controls excluded, Control==0)
 """
 
 import pathlib
@@ -15,7 +15,9 @@ import warnings
 warnings.filterwarnings("ignore")
 
 HERE = pathlib.Path(__file__).resolve().parent
-INPUT_CSV = HERE.parent / "All_Results_T0T1_Gait_VV_012526.csv"
+INPUT_CSV = HERE.parent / "All_Results_T0T1_Gait_VV_CR_20260303.csv"
+OUT = HERE / "out" / "042926"
+OUT.mkdir(parents=True, exist_ok=True)
 
 # ── 1. Load data ────────────────────────────────────────────────────
 df = pd.read_csv(INPUT_CSV)
@@ -48,7 +50,7 @@ for trial in ("T1", "T2"):
             assert (trial, tt, m) in col_map, f"Missing column for {trial}_{tt}.{m}"
 
 
-# ── 3. Reshape to long format and compute ICC(1,1) ─────────────────
+# ── 3. Reshape to long format and compute ICC(3,1) ─────────────────
 def compute_icc_table(data: pd.DataFrame) -> pd.DataFrame:
     """Return a DataFrame with one row per metric, ICC columns per group×test."""
     group_map = {1: "Ataxia", 2: "PD"}
@@ -77,9 +79,9 @@ def compute_icc_table(data: pd.DataFrame) -> pd.DataFrame:
                             data=long, targets="ID",
                             raters="raters", ratings="ratings",
                         )
-                        icc1 = icc_df[icc_df["Type"] == "ICC1"].iloc[0]
-                        icc_val = round(icc1["ICC"], 3)
-                        ci_str = f"[{icc1['CI95%'][0]:.3f}, {icc1['CI95%'][1]:.3f}]"
+                        icc3 = icc_df[icc_df["Type"] == "ICC3"].iloc[0]
+                        icc_val = round(icc3["ICC"], 3)
+                        ci_str = f"[{icc3['CI95%'][0]:.3f}, {icc3['CI95%'][1]:.3f}]"
                     except Exception:
                         pass
 
@@ -97,15 +99,15 @@ def compute_icc_table(data: pd.DataFrame) -> pd.DataFrame:
 
 
 # ── 4. Run for all subjects and patients-only ───────────────────────
-print("Computing ICC(1,1) for all subjects...")
+print("Computing ICC(3,1) for all subjects...")
 icc_all = compute_icc_table(df)
-out_all = HERE / "out" / "icc11_all_subjects.csv"
+out_all = OUT / "icc31_all_subjects.csv"
 icc_all.to_csv(out_all, index=False)
 print(f"  → {out_all}  ({len(icc_all)} rows)")
 
-print("Computing ICC(1,1) for patients only (Control==0)...")
+print("Computing ICC(3,1) for patients only (Control==0)...")
 icc_pat = compute_icc_table(df[df["Control"] == 0])
-out_pat = HERE / "out" / "icc11_patients_only.csv"
+out_pat = OUT / "icc31_patients_only.csv"
 icc_pat.to_csv(out_pat, index=False)
 print(f"  → {out_pat}  ({len(icc_pat)} rows)")
 

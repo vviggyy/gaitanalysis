@@ -1,12 +1,12 @@
 """
 1. Average left-foot / right-foot Xsens features into single bilateral features.
 2. Save a new CSV with averaged columns.
-3. Compute ICC(1,1) + 95% CI on the averaged data (all subjects & patients-only).
+3. Compute ICC(3,1) + 95% CI on the averaged data (all subjects & patients-only).
 
-Outputs (in out/):
+Outputs (in out/042926/):
   - All_Results_LR_averaged.csv          (input CSV with LF/RF averaged)
-  - icc11_lr_averaged_all_subjects.csv   (ICC results, all subjects)
-  - icc11_lr_averaged_patients_only.csv  (ICC results, patients only)
+  - icc31_lr_averaged_all_subjects.csv   (ICC results, all subjects)
+  - icc31_lr_averaged_patients_only.csv  (ICC results, patients only)
 """
 
 import pathlib
@@ -17,9 +17,9 @@ import warnings
 warnings.filterwarnings("ignore")
 
 HERE = pathlib.Path(__file__).resolve().parent
-INPUT_CSV = HERE.parent / "All_Results_T0T1_Gait_VV_012526.csv"
-OUT = HERE / "out"
-OUT.mkdir(exist_ok=True)
+INPUT_CSV = HERE.parent / "All_Results_T0T1_Gait_VV_CR_20260303.csv"
+OUT = HERE / "out" / "042926"
+OUT.mkdir(parents=True, exist_ok=True)
 
 # ── 1. Load data ─────────────────────────────────────────────────────
 df = pd.read_csv(INPUT_CSV)
@@ -89,7 +89,7 @@ for trial in ("T1", "T2"):
 
 print(f"Metrics ({len(metrics)}): {metrics}")
 
-# ── 4. Compute ICC(1,1) ─────────────────────────────────────────────
+# ── 4. Compute ICC(3,1) ─────────────────────────────────────────────
 def compute_icc_table(data: pd.DataFrame) -> pd.DataFrame:
     group_map = {1: "Ataxia", 2: "PD"}
     results = []
@@ -116,9 +116,9 @@ def compute_icc_table(data: pd.DataFrame) -> pd.DataFrame:
                             data=long, targets="ID",
                             raters="raters", ratings="ratings",
                         )
-                        icc1 = icc_df[icc_df["Type"] == "ICC1"].iloc[0]
-                        icc_val = round(icc1["ICC"], 3)
-                        ci_str = f"[{icc1['CI95%'][0]:.3f}, {icc1['CI95%'][1]:.3f}]"
+                        icc3 = icc_df[icc_df["Type"] == "ICC3"].iloc[0]
+                        icc_val = round(icc3["ICC"], 3)
+                        ci_str = f"[{icc3['CI95%'][0]:.3f}, {icc3['CI95%'][1]:.3f}]"
                     except Exception:
                         pass
 
@@ -134,15 +134,15 @@ def compute_icc_table(data: pd.DataFrame) -> pd.DataFrame:
 
 
 # ── 5. Run for all subjects and patients-only ────────────────────────
-print("Computing ICC(1,1) for all subjects (LR averaged)...")
+print("Computing ICC(3,1) for all subjects (LR averaged)...")
 icc_all = compute_icc_table(df)
-out_all = OUT / "icc11_lr_averaged_all_subjects.csv"
+out_all = OUT / "icc31_lr_averaged_all_subjects.csv"
 icc_all.to_csv(out_all, index=False)
 print(f"  → {out_all}  ({len(icc_all)} rows)")
 
-print("Computing ICC(1,1) for patients only (LR averaged, Control==0)...")
+print("Computing ICC(3,1) for patients only (LR averaged, Control==0)...")
 icc_pat = compute_icc_table(df[df["Control"] == 0])
-out_pat = OUT / "icc11_lr_averaged_patients_only.csv"
+out_pat = OUT / "icc31_lr_averaged_patients_only.csv"
 icc_pat.to_csv(out_pat, index=False)
 print(f"  → {out_pat}  ({len(icc_pat)} rows)")
 

@@ -1,10 +1,10 @@
 """
-Compute ICC(1,1) + 95% CI for JT and Myo gait features, W1 vs W2,
+Compute ICC(3,1) + 95% CI for JT and Myo gait features, W1 vs W2,
 split by disease group (Ataxia / PD), with and without controls.
 
-Outputs (in out/):
-  - icc11_jt_all_subjects.csv / icc11_jt_patients_only.csv
-  - icc11_myo_all_subjects.csv / icc11_myo_patients_only.csv
+Outputs (in out/042926/):
+  - icc31_jt_all_subjects.csv / icc31_jt_patients_only.csv
+  - icc31_myo_all_subjects.csv / icc31_myo_patients_only.csv
 """
 
 import pathlib
@@ -15,15 +15,15 @@ import warnings
 warnings.filterwarnings("ignore")
 
 HERE = pathlib.Path(__file__).resolve().parent
-INPUT_CSV = HERE.parent / "All_Results_T0T1_Gait_VV_012526.csv"
-OUT = HERE / "out"
-OUT.mkdir(exist_ok=True)
+INPUT_CSV = HERE.parent / "All_Results_T0T1_Gait_VV_CR_20260303.csv"
+OUT = HERE / "out" / "042926"
+OUT.mkdir(parents=True, exist_ok=True)
 
 df = pd.read_csv(INPUT_CSV)
 
 
 def compute_icc_for_system(data, system, metrics):
-    """Compute ICC(1,1) table for a given system prefix and metric list."""
+    """Compute ICC(3,1) table for a given system prefix and metric list."""
     group_map = {1: "Ataxia", 2: "PD"}
     results = []
 
@@ -50,9 +50,9 @@ def compute_icc_for_system(data, system, metrics):
                             data=long, targets="ID",
                             raters="raters", ratings="ratings",
                         )
-                        icc1 = icc_df[icc_df["Type"] == "ICC1"].iloc[0]
-                        icc_val = round(icc1["ICC"], 3)
-                        ci_str = f"[{icc1['CI95%'][0]:.3f}, {icc1['CI95%'][1]:.3f}]"
+                        icc3 = icc_df[icc_df["Type"] == "ICC3"].iloc[0]
+                        icc_val = round(icc3["ICC"], 3)
+                        ci_str = f"[{icc3['CI95%'][0]:.3f}, {icc3['CI95%'][1]:.3f}]"
                     except Exception:
                         pass
 
@@ -71,15 +71,15 @@ def compute_icc_for_system(data, system, metrics):
 jt_metrics = ["cadence", "stridetime", "stridetimeSD", "v"]
 
 print("=== JT ===")
-print("Computing ICC(1,1) for all subjects...")
+print("Computing ICC(3,1) for all subjects...")
 icc = compute_icc_for_system(df, "JT", jt_metrics)
-out_path = OUT / "icc11_jt_all_subjects.csv"
+out_path = OUT / "icc31_jt_all_subjects.csv"
 icc.to_csv(out_path, index=False)
 print(f"  → {out_path}  ({len(icc)} rows)")
 
-print("Computing ICC(1,1) for patients only (Control==0)...")
+print("Computing ICC(3,1) for patients only (Control==0)...")
 icc = compute_icc_for_system(df[df["Control"] == 0], "JT", jt_metrics)
-out_path = OUT / "icc11_jt_patients_only.csv"
+out_path = OUT / "icc31_jt_patients_only.csv"
 icc.to_csv(out_path, index=False)
 print(f"  → {out_path}  ({len(icc)} rows)")
 
@@ -95,15 +95,15 @@ myo_metrics = [
 ]
 
 print("\n=== Myo ===")
-print("Computing ICC(1,1) for all subjects...")
+print("Computing ICC(3,1) for all subjects...")
 icc = compute_icc_for_system(df, "Myo", myo_metrics)
-out_path = OUT / "icc11_myo_all_subjects.csv"
+out_path = OUT / "icc31_myo_all_subjects.csv"
 icc.to_csv(out_path, index=False)
 print(f"  → {out_path}  ({len(icc)} rows)")
 
-print("Computing ICC(1,1) for patients only (Control==0)...")
+print("Computing ICC(3,1) for patients only (Control==0)...")
 icc = compute_icc_for_system(df[df["Control"] == 0], "Myo", myo_metrics)
-out_path = OUT / "icc11_myo_patients_only.csv"
+out_path = OUT / "icc31_myo_patients_only.csv"
 icc.to_csv(out_path, index=False)
 print(f"  → {out_path}  ({len(icc)} rows)")
 

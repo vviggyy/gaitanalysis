@@ -1,5 +1,5 @@
 """
-Consolidated ICC(1,1) bar-chart plotting.
+Consolidated ICC(3,1) bar-chart plotting.
 
 Three public functions:
   plot_individual  – one bar chart per category → 4 PNGs
@@ -16,7 +16,8 @@ import matplotlib.lines as mlines
 import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
-OUT = HERE / "out"
+OUT = HERE / "out" / "042926"
+OUT.mkdir(parents=True, exist_ok=True)
 
 CATEGORIES = [
     ("Ataxia_NG", "Ataxia — Normal Gait"),
@@ -122,9 +123,9 @@ def plot_individual(csv_path, out_dir, tag, system_name=None,
                 error_kw=dict(ecolor="gray", lw=0.8), zorder=2)
         ax.set_yticks(y_pos)
         ax.set_yticklabels(names, fontsize=max(7, 9 - n // 20))
-        ax.set_xlabel("ICC(1,1)")
+        ax.set_xlabel("ICC(3,1)")
         suffix = f" ({label})" if system_name else ""
-        ax.set_title(f"ICC(1,1) — {title}{suffix}",
+        ax.set_title(f"ICC(3,1) — {title}{suffix}",
                      fontsize=12, fontweight="bold")
         ax.set_xlim(-0.6, 1.05)
         ax.axvline(0, color="black", lw=0.5, ls="--", zorder=1)
@@ -178,7 +179,7 @@ def plot_combined(csv_path, out_dir, tag, system_name=None,
                 error_kw=dict(ecolor="gray", lw=0.8), zorder=2)
         ax.set_yticks(y_pos)
         ax.set_yticklabels(names, fontsize=8)
-        ax.set_xlabel("ICC(1,1)", fontsize=9)
+        ax.set_xlabel("ICC(3,1)", fontsize=9)
         ax.set_title(title, fontsize=11, fontweight="bold")
         ax.set_xlim(-0.6 if top_n is None else 0, 1.05)
         for thresh in (0.5, 0.75, 0.9):
@@ -189,7 +190,7 @@ def plot_combined(csv_path, out_dir, tag, system_name=None,
     fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=9,
                frameon=True, title="Reliability", title_fontsize=10)
     top_str = f"Top {top_n} " if top_n else ""
-    fig.suptitle(f"ICC(1,1) — {top_str}Metrics ({label}, All Subjects)",
+    fig.suptitle(f"ICC(3,1) — {top_str}Metrics ({label}, All Subjects)",
                  fontsize=14, fontweight="bold", y=0.98)
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])
     fname = out_dir / f"icc_combined_{tag}.png"
@@ -254,7 +255,7 @@ def plot_multi_system(system_csvs, out_dir, top_n=None):
                 error_kw=dict(ecolor="gray", lw=0.6), zorder=2)
         ax.set_yticks(y_pos)
         ax.set_yticklabels(labels, fontsize=6.5)
-        ax.set_xlabel("ICC(1,1)", fontsize=9)
+        ax.set_xlabel("ICC(3,1)", fontsize=9)
         ax.set_title(title, fontsize=12, fontweight="bold")
         ax.set_xlim(-0.6, 1.05)
         ax.axvline(0, color="black", lw=0.5, ls="--", zorder=1)
@@ -278,14 +279,14 @@ def plot_multi_system(system_csvs, out_dir, top_n=None):
                    loc="lower center", ncol=4, fontsize=9, frameon=True,
                    title="System                                              Reliability",
                    title_fontsize=10, columnspacing=1.5)
-        suptitle = "ICC(1,1) — All Systems (" + ", ".join(system_csvs) + ")"
+        suptitle = "ICC(3,1) — All Systems (" + ", ".join(system_csvs) + ")"
         fname = out_dir / "icc_all_systems_combined.png"
         rect = [0, 0.035, 1, 0.99]
     else:
         fig.legend(handles=band_handles, loc="lower center", ncol=4, fontsize=9,
                    frameon=True, title="Reliability", title_fontsize=10,
                    columnspacing=1.5)
-        suptitle = (f"ICC(1,1) — Top {top_n} Features per System ("
+        suptitle = (f"ICC(3,1) — Top {top_n} Features per System ("
                     + ", ".join(system_csvs) + ")")
         fname = out_dir / f"icc_top{top_n}_all_systems.png"
         rect = [0, 0.04, 1, 0.99]
@@ -300,14 +301,14 @@ def plot_multi_system(system_csvs, out_dir, top_n=None):
 # ── __main__ ─────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    lr_csv = OUT / "icc11_lr_averaged_all_subjects.csv"
-    jt_csv = OUT / "icc11_jt_all_subjects.csv"
-    myo_csv = OUT / "icc11_myo_all_subjects.csv"
+    lr_csv = OUT / "icc31_lr_averaged_all_subjects.csv"
+    jt_csv = OUT / "icc31_jt_all_subjects.csv"
+    myo_csv = OUT / "icc31_myo_all_subjects.csv"
 
     # Xsens (original split L/R)
-    plot_individual(OUT / "icc11_all_subjects.csv", OUT, "",
+    plot_individual(OUT / "icc31_all_subjects.csv", OUT, "",
                     color="uniform", bg_bands=True)
-    plot_combined(OUT / "icc11_all_subjects.csv", OUT, "xsens", top_n=10)
+    plot_combined(OUT / "icc31_all_subjects.csv", OUT, "xsens", top_n=10)
 
     # LR Averaged
     plot_individual(lr_csv, OUT, "lr_avg", system_name="LR Averaged")
