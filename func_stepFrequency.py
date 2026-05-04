@@ -402,36 +402,10 @@ def calculate_step_stride_length(lane, com_data, lf_data, rf_data):
     COM_xy_Lanetp_new, LF_xy_Lanetp_new, RF_xy_Lanetp_new = get_gait(lane, com_data, lf_data, rf_data)
     peaks_COM, peaks_left, peaks_right, peaks_left_corrected, peaks_right_corrected, peaks_timeonly, peaks_heightonly, minima_RF, minima_LF = get_peaks(lane, com_data, lf_data, rf_data, plot = 'off')
 
-    # Linker Fuß, höchste Punkte = 1 step
-    
-    ind = peaks_left #index der peaks
-    x_values = LF_xy_Lanetp_new[1,ind] #x-Wert der peaks (für Schrittlänge)
-   # print("---x_values L ---", x_values)
-    Step_left = 0
-    Stride_length = []
-    Stride_length_L = []
-    Stride_length_R = []
-        
-    for i in range(len(peaks_left)-1):
-        Stride_left = x_values[i+1]-x_values[i] #Abstand zwischen den x-Werten
-        Stride_length_L.append(Stride_left)
-        Stride_length.append(Stride_left)
-    Stride_length_L = abs(np.hstack(Stride_length_L)) # Absolute Step lengths, 
-    Stride_length = list(abs(np.hstack(Stride_length)))
-
-
-    # aneinandergehängt als Liste    
-    ## dasselbe für den anderen Fuß ####
-    #index der peaks
-    x_values = RF_xy_Lanetp_new[1,peaks_right] 
-    #print("---x_values R---", x_values)
-    Stride_right = 0
-    for i in range(len(peaks_right)-1):
-        Stride_right = x_values[i+1]-x_values[i] #Abstand zwischen den x-Werten
-        Stride_length_R.append(Stride_right)
-        Stride_length.append(Stride_right)
-    Stride_length_R = abs(np.hstack(Stride_length_R)) # Absolute Step lengths, 
-    Stride_length = list(abs(np.hstack(Stride_length))) 
+    # forward-direction strides per foot (peak-to-peak); np.diff returns empty for <2 peaks
+    Stride_length_L = np.abs(np.diff(LF_xy_Lanetp_new[1, peaks_left]))
+    Stride_length_R = np.abs(np.diff(RF_xy_Lanetp_new[1, peaks_right]))
+    Stride_length = list(Stride_length_L) + list(Stride_length_R)
 
     return Stride_length, Stride_length_L, Stride_length_R #actually stride lengths
 
@@ -536,11 +510,11 @@ def asymmetry(arr1, arr2):
     relative = diff/np.mean([mu1, mu2])
     return relative
 
-#measuring coefficient of variation
+#measuring coefficient of variation (sample ddof=1, matches statistics.variance)
 def variability(arr):
     mu = np.mean(arr)
-    sig = np.std(arr)
-    
+    sig = np.std(arr, ddof=1)
+
     return sig/mu
 
 #pass in an array like COM_x_new_time, subject number, and testtype (2 character)
