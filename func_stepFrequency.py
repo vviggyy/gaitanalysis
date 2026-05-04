@@ -159,14 +159,15 @@ def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off'):
     peaks_left, _ = find_peaks(lf_data[lane][2], height = 0.10, width=8, distance = 50) #### Height?! 
     #peaks_left, _ = find_peaks(lf_data[lane][2], height = max(lf_data[lane][2]) - 0.04, width=10) #### not good to start from max and look down, some files have high maxes and smaller peak
     ind = peaks_left
-    peaks_left_corrected = np.mean(lf_data[lane][2][ind]) - np.min(lf_data[lane][2])
-    
+    # per-step floor-corrected lift heights (one entry per detected peak)
+    peaks_left_corrected = lf_data[lane][2][ind] - np.min(lf_data[lane][2])
+
     # Right Foot
     peaks_right, _ = find_peaks(rf_data[lane][2], height = 0.10, width=8, distance = 50) #### Height?!
     #peaks_right, _ = find_peaks(rf_data[lane][2], height = max(rf_data[lane][2]) - 0.04, width=10) #### Height?! #height=max(RF_z_Lane1_2)-0.02 ###CHANGED
 
     ind = peaks_right
-    peaks_right_corrected = np.mean(rf_data[lane][2][ind]) - np.min(rf_data[lane][2])
+    peaks_right_corrected = rf_data[lane][2][ind] - np.min(rf_data[lane][2])
 
     #find minima 
     RF_z_Lane_transform = rf_data[lane][2]*-1 #weil wir die minima brauchen, die Funktion aber nur peaks finden kann
@@ -384,24 +385,17 @@ def crossing(min_idx, signal, thresh):
             return i
     
 def calc_step_time_freq(lane, com_data, lf_data, rf_data,):
+    # per-step inter-peak intervals (one entry per consecutive pair of COM-z peaks)
     peaks_COM, peaks_left, peaks_right, peaks_left_corrected, peaks_right_corrected, peaks_timeonly, peaks_heightonly, minima_RF, minima_LF = get_peaks(lane, com_data, lf_data, rf_data, plot = 'off')
-    av_data = []
-    InterStepTime_lane = 0
-    for i in range(len(peaks_COM)-1): # den ersten? und letzten weglassen
-        av_data = peaks_timeonly[i+1]-peaks_timeonly[i] # Zeitabstände zw. Peaks
-        InterStepTime_lane += av_data # Addieren aller Zeitabstände
-    InterStepTime_lane = InterStepTime_lane/(len(peaks_COM)-1) # Durchschnitt aller Zeitabstände
-    return InterStepTime_lane
+    return np.diff(peaks_timeonly)
 
-### Calculate sum and average Intersteptime for all lanes  
+### Concatenate inter-step intervals across all lanes
 def calc_interstep_all(lanes, com_data, lf_data, rf_data,):
-    InterStepTime_sum = 0
     InterStepTime_arr = []
     for lane in lanes:
-        InterStepTime_sum += calc_step_time_freq(lane, com_data, lf_data, rf_data)
-        InterStepTime_arr.append(calc_step_time_freq(lane, com_data, lf_data, rf_data))
-    InterStepTime_avg = InterStepTime_sum / len(lanes)
-    return InterStepTime_avg, InterStepTime_sum, InterStepTime_arr
+        InterStepTime_arr += list(calc_step_time_freq(lane, com_data, lf_data, rf_data))
+    InterStepTime_avg = np.mean(InterStepTime_arr)
+    return InterStepTime_avg, InterStepTime_arr
 
 ### Calculate Stride Length
 def calculate_step_stride_length(lane, com_data, lf_data, rf_data):
