@@ -4,8 +4,50 @@ import numpy as np
 import matplotlib.pyplot as plt
 import copy
 import numpy.linalg as LA
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, butter, filtfilt
 from scipy.stats import linregress
+
+## ---- Butterworth low-pass filtering ----
+## Matches the arm pipeline: 4th-order, two-pass (zero-phase) low-pass, 6 Hz cutoff @ 60 Hz.
+DEFAULT_FRAME_RATE = 60.0      # XSENS sampling frequency (Hz)
+FILTER_CUTOFF_HZ = 6.0         # low-pass cutoff (Hz)
+BUTTERWORTH_ORDER = 4          # filter order
+
+def butter_lowpass_coeffs(cutoff_hz, fs, order=4):
+    if cutoff_hz is None:
+        raise ValueError("No cutoff frequency has been established.")
+    nyq = 0.5 * fs
+    if cutoff_hz <= 0 or cutoff_hz >= nyq:
+        raise ValueError(f"cutoff_hz must be between 0 and Nyquist ({nyq} Hz).")
+    normal_cutoff = cutoff_hz / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def apply_lowpass_filter(data, cutoff_hz=None, fs=None, order=None):
+    """Zero-phase Butterworth low-pass. Shape-safe: filters along the last
+    (time) axis for both 1-D foot-z arrays and 2-D [time; value] COM arrays.
+    For 2-D inputs the time row (row 0) is passed through untouched; only the
+    value row(s) are filtered, so timestamps are never smoothed."""
+    if cutoff_hz is None:
+        cutoff_hz = FILTER_CUTOFF_HZ
+    if fs is None:
+        fs = DEFAULT_FRAME_RATE
+    if order is None:
+        order = BUTTERWORTH_ORDER
+
+    b, a = butter_lowpass_coeffs(cutoff_hz, fs, order=order)
+    arr = np.asarray(data, dtype=float)
+
+    # filtfilt needs len > 3*max(len(a),len(b)); skip very short segments
+    padlen = 3 * max(len(a), len(b))
+    if arr.shape[-1] <= padlen:
+        return arr
+
+    if arr.ndim == 1:
+        return filtfilt(b, a, arr)
+    out = arr.copy()
+    out[1:, :] = filtfilt(b, a, arr[1:, :], axis=-1)  # keep time row (0) raw
+    return out
 
 ## Regressionsgerade Gangrichtung
 ## Dient als Grundlage für das korrigieren der Linie auf slope 0
@@ -142,12 +184,26 @@ def get_gait(lane, com_data, lf_data, rf_data, plot='off'):
         return KeyError
 
 ## Calculate Peaks and Distances
-def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off'):
+def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off', filt = False):
+    # NOTE: filtering now happens once at signal construction in the notebook (the z-signals
+    # in com_data/lf_data/rf_data arrive already low-pass filtered), so filt defaults to False
+    # here to avoid double-filtering. Pass filt=True only if you feed this raw, unfiltered data.
+    # Why it matters: the COM find_peaks below has no width/distance guard, so raw sensor jitter
+    # yields spurious sub-step peaks (verified: pairs <0.08s apart that inflate step frequency).
+    if filt:
+        com_z = apply_lowpass_filter(com_data[lane][2][1, :])
+        lf_z = apply_lowpass_filter(lf_data[lane][2])
+        rf_z = apply_lowpass_filter(rf_data[lane][2])
+    else:
+        com_z = com_data[lane][2][1, :]
+        lf_z = lf_data[lane][2]
+        rf_z = rf_data[lane][2]
+
     #peaks_COM, _ = find_peaks(com_data[lane][2][1,:], height=0.8, width=10) #!# check height # ??? #may need to change to percentages to detect more peaks
     #peaks_COM, _ = find_peaks(com_data[lane][2][1,:], height=np.mean(com_data[lane][2][1]), width=10) #height = np.mean(COM_z) ###CHANGED
-    peaks_COM, _ = find_peaks(com_data[lane][2][1, :], height=0.7)
-    
-    Peaks2D = com_data[lane][2][:,peaks_COM]
+    peaks_COM, _ = find_peaks(com_z, height=0.7)
+
+    Peaks2D = com_data[lane][2][:,peaks_COM]  # time row stays raw; heights at filtered peak indices
     peaks_timeonly = Peaks2D[0,:]
     peaks_heightonly = Peaks2D[1,:]
     #plt.plot(com_data[lane][2][0,:], com_data[lane][2][1,:])
@@ -156,25 +212,25 @@ def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off'):
     #plt.show()
 
     # Left Foot
-    peaks_left, _ = find_peaks(lf_data[lane][2], height = 0.10, width=8, distance = 50) #### Height?! 
+    peaks_left, _ = find_peaks(lf_z, height = 0.10, width=8, distance = 50) #### Height?!
     #peaks_left, _ = find_peaks(lf_data[lane][2], height = max(lf_data[lane][2]) - 0.04, width=10) #### not good to start from max and look down, some files have high maxes and smaller peak
     ind = peaks_left
     # per-step floor-corrected lift heights (one entry per detected peak)
-    peaks_left_corrected = lf_data[lane][2][ind] - np.min(lf_data[lane][2])
+    peaks_left_corrected = lf_z[ind] - np.min(lf_z)
 
     # Right Foot
-    peaks_right, _ = find_peaks(rf_data[lane][2], height = 0.10, width=8, distance = 50) #### Height?!
+    peaks_right, _ = find_peaks(rf_z, height = 0.10, width=8, distance = 50) #### Height?!
     #peaks_right, _ = find_peaks(rf_data[lane][2], height = max(rf_data[lane][2]) - 0.04, width=10) #### Height?! #height=max(RF_z_Lane1_2)-0.02 ###CHANGED
 
     ind = peaks_right
-    peaks_right_corrected = rf_data[lane][2][ind] - np.min(rf_data[lane][2])
+    peaks_right_corrected = rf_z[ind] - np.min(rf_z)
 
-    #find minima 
-    RF_z_Lane_transform = rf_data[lane][2]*-1 #weil wir die minima brauchen, die Funktion aber nur peaks finden kann
+    #find minima
+    RF_z_Lane_transform = rf_z*-1 #weil wir die minima brauchen, die Funktion aber nur peaks finden kann
     minima_RF, _ = find_peaks(RF_z_Lane_transform, height=-0.1, width=30, distance = 40) #!# width & height OLD
     #minima_RF, _ = find_peaks(RF_z_Lane_transform, height=-0.1, width=30, distance = (1/8) * len(RF_z_Lane_transform)) #!# width & height NEW
 
-    LF_z_Lane_transform = lf_data[lane][2]*-1 #weil wir die minima brauchen, die Funktion aber nur peaks finden kann
+    LF_z_Lane_transform = lf_z*-1 #weil wir die minima brauchen, die Funktion aber nur peaks finden kann
     minima_LF, _ = find_peaks(LF_z_Lane_transform, height=-0.1, width=30, distance = 40) #!# width & height OLD
     #minima_LF, _ = find_peaks(LF_z_Lane_transform, height=-0.1, width=30, distance = (1/8) * len(LF_z_Lane_transform)) #!# width & height NEW
     
