@@ -8,7 +8,7 @@ from scipy.signal import find_peaks, butter, filtfilt
 from scipy.stats import linregress
 
 ## ---- Butterworth low-pass filtering ----
-## Matches the arm pipeline: 4th-order, two-pass (zero-phase) low-pass, 6 Hz cutoff @ 60 Hz.
+## 4th-order, two-pass (zero-phase) low-pass, 6 Hz cutoff @ 60 Hz.
 DEFAULT_FRAME_RATE = 60.0      # XSENS sampling frequency (Hz)
 FILTER_CUTOFF_HZ = 6.0         # low-pass cutoff (Hz)
 BUTTERWORTH_ORDER = 4          # filter order
@@ -18,7 +18,7 @@ def butter_lowpass_coeffs(cutoff_hz, fs, order=4):
         raise ValueError("No cutoff frequency has been established.")
     nyq = 0.5 * fs
     if cutoff_hz <= 0 or cutoff_hz >= nyq:
-        raise ValueError(f"cutoff_hz must be between 0 and Nyquist ({nyq} Hz).")
+        raise ValueError(f"Invalid cutoff_hz: must be between 0 and Nyquist ({nyq} Hz).")
     normal_cutoff = cutoff_hz / nyq
     b, a = butter(order, normal_cutoff, btype='low', analog=False)
     return b, a
@@ -191,7 +191,7 @@ def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off', filt = False):
     # Why it matters: the COM find_peaks below has no width/distance guard, so raw sensor jitter
     # yields spurious sub-step peaks (verified: pairs <0.08s apart that inflate step frequency).
     if filt:
-        com_z = apply_lowpass_filter(com_data[lane][2][1, :])
+        com_z = apply_lowpass_filter(com_data[lane][2][1, :]) # [2] selects z axis for all of these 
         lf_z = apply_lowpass_filter(lf_data[lane][2])
         rf_z = apply_lowpass_filter(rf_data[lane][2])
     else:
@@ -310,7 +310,7 @@ def calculate_stance_swing(lane, intersect_idx_L, intersect_idx_R, lf_data, rf_d
     stance_R_idx = []
     stance_L_idx = []
 
-    #assumption is that there's a constant sampling frequency (verify with clara)
+    #assumption is that there's a constant sampling frequency --> confirmed
     dst_base_R = np.zeros(len(com_data[lane][0][0])) #array of zeros. replace with 1 where right stance is stance
     dst_base_L = np.zeros(len(com_data[lane][0][0])) #... replace zeroes with 1 where left foot is stance
     
@@ -346,7 +346,7 @@ def calculate_stance_swing(lane, intersect_idx_L, intersect_idx_R, lf_data, rf_d
             
     return swing_R, stance_R, swing_L, stance_L, dst_base
 
-#calculate double support time
+#calculate percent double support time
 def double_support_time(base):
     base_trim = np.trim_zeros(base) #remove end zeros corersponding to only one foot on plate
     dst_times = np.where(base_trim == 2, base_trim, 0)
@@ -358,16 +358,6 @@ def calculate_percent_cycle(sw_R, st_R, sw_L, st_L):
     sum_R = np.sum(sw_R) + np.sum(st_R)
     sum_L = np.sum(sw_L) + np.sum(st_L)
     sum_all = sum_R + sum_L
-    
-    ''' probably not needed
-    #percent swing and stance R
-    percent_sw_R = np.sum(sw_R) / sum_R
-    percent_st_R = np.sum(st_R) / sum_R
-    
-    #percent swing and stance L
-    percent_sw_L = np.sum(sw_L) / sum_L
-    percent_st_L = np.sum(st_L) / sum_L
-    '''
     
     #percent swing and stance overall
     percent_sw = (np.sum(sw_R) + np.sum(sw_L)) / sum_all
@@ -536,8 +526,6 @@ def get_frames(com, subject, test_type):
     #fixed 8/27/25 VV
     if len(lane_idxs) % 2 != 0: 
         lane_idxs = lane_idxs[:-1]
-
-    #TODO: just take first 6 lanes
     
     lane_idxs_re = np.reshape(lane_idxs, (-1, 2)).astype(int) #[[start1, end1], [start2,end2]...]
     #print(lane_idxs_re)
