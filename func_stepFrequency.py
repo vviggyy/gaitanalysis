@@ -259,9 +259,6 @@ def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off', filt = False):
     
     return peaks_COM, peaks_left, peaks_right, peaks_left_corrected, peaks_right_corrected, peaks_timeonly, peaks_heightonly, minima_RF, minima_LF
 
-def central_diff(s, h = 1):
-    return (s[2:] - 2 * s[1:-1] + s[:-2]) / h**2
-
 def intersect(lane, rf_data, lf_data, minima_RF, minima_LF, plot = "off"):
     min_r_vals = rf_data[lane][2][minima_RF]
     min_l_vals = lf_data[lane][2][minima_LF]
@@ -269,7 +266,6 @@ def intersect(lane, rf_data, lf_data, minima_RF, minima_LF, plot = "off"):
     '''
     plt.plot(rf_data[lane][2], label = "original signal")
     plt.plot(np.gradient(np.gradient(rf_data[lane][2])), label = "np.gradient twice")
-    plt.plot(central_diff(rf_data[lane][2]), label = "central diff")
     plt.legend()
     '''
        
@@ -378,67 +374,6 @@ def calculate_percent_cycle(sw_R, st_R, sw_L, st_L):
     percent_st = (np.sum(st_R) + np.sum(st_L)) / sum_all
     
     return percent_sw, percent_st
-    
-## Calculates 1/2 of stance time, 
-# DEPRECATED ---
-def calc_stance_time(lane, rf_data, lf_data, com_data, minima_RF, minima_LF, plot = "show"):
-    threshold_r = np.min(rf_data[lane][2]) + 0.02 #accelerometry? manually chosen
-    threshold_l = np.min(lf_data[lane][2]) + 0.02 #accelerometry?
-    
-    #calculate threshold values "crossings" of horizontal
-    cross_ind_l = []
-    for ind in minima_LF:
-        cross_loc = crossing(ind, lf_data[lane][2], threshold_l)
-        if cross_loc != None:
-            cross_ind_l.append(cross_loc)
-    
-    cross_ind_r = []
-    for ind in minima_RF:
-        cross_loc = crossing(ind, rf_data[lane][2], threshold_r)
-        if cross_loc != None:
-            cross_ind_r.append(cross_loc)
-    
-    if plot == 'show':
-        print("---- Threshold ----")
-        fig, (ax1, ax2)= plt.subplots(2,1)
-        ax1.plot(rf_data[lane][2])
-        ax1.plot(cross_ind_r, rf_data[lane][2][cross_ind_r], 'o')
-        ax1.axhline(threshold_r)
-        ax1.set_title('Right Foot')
-        
-        ax2.plot(lf_data[lane][2])
-        ax2.plot(cross_ind_l, lf_data[lane][2][cross_ind_l], 'o')
-        ax2.axhline(threshold_l)
-        ax2.set_title('Left Foot')
-        
-        plt.tight_layout()
-        plt.show()
-    
-    print("LEFT CROSSINGS", cross_ind_l)
-    print("RIGHT CROSSINGS", cross_ind_r)
-
-    stand_phase_times_l = []
-    for i in range(len(cross_ind_l)):
-        start_t = com_data[lane][0][0][minima_LF[i]]
-        end_t = com_data[lane][0][0][cross_ind_l[i]]
-        print("LEFT:", start_t, end_t)
-        stand_phase_times_l.append(end_t - start_t)
-    
-    stand_phase_times_r = []
-    for i in range(len(cross_ind_r)):
-        start_t = com_data[lane][0][0, minima_RF[i]]
-        end_t = com_data[lane][0][0, cross_ind_r[i]]
-        print("RIGHT:", start_t, end_t)
-        stand_phase_times_r.append(end_t - start_t)
-        
-    return stand_phase_times_l, stand_phase_times_r
-    
-#find crossing point AFTER minimum, will return None if no threshold cross after the minimum
-# DEPRECATED ---
-def crossing(min_idx, signal, thresh):
-    for i in range(min_idx, len(signal)):
-        if signal[i] > thresh:
-            return i
     
 def calc_step_time_freq(lane, com_data, lf_data, rf_data,):
     # per-step inter-peak intervals (one entry per consecutive pair of COM-z peaks)
