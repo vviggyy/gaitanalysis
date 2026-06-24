@@ -259,7 +259,7 @@ def get_peaks(lane, com_data, lf_data, rf_data, plot = 'off', filt = False):
     
     return peaks_COM, peaks_left, peaks_right, peaks_left_corrected, peaks_right_corrected, peaks_timeonly, peaks_heightonly, minima_RF, minima_LF
 
-def intersect(lane, rf_data, lf_data, minima_RF, minima_LF, plot = "off"):
+def intersect(lane, rf_data, lf_data, minima_RF, minima_LF, plot = "show"):
     min_r_vals = rf_data[lane][2][minima_RF]
     min_l_vals = lf_data[lane][2][minima_LF]
     
