@@ -498,6 +498,32 @@ def variability(arr):
 
     return sig/mu
 
+def foot_minima(z):
+    """Foot-strike minima for a single foot-z segment.
+    MUST match the minima params used in get_peaks() (kept intentionally hardcoded)."""
+    minima, _ = find_peaks(np.asarray(z) * -1, height=-0.1, width=30, distance=40)
+    return minima
+
+def select_valid_lanes(lane_frames, n_wanted, lf_z, rf_z):
+    """Pick the first n_wanted detected lanes that are usable walking passes.
+
+    get_frames over-segments some recordings, emitting short junk fragments that
+    have no foot-strikes (zero minima) and crash the downstream step/stance code.
+    A 'valid' lane has >=1 foot-minimum in BOTH feet. We keep detection order and
+    simply skip the junk fragments, so the first n_wanted valid lanes line up with
+    lane_1..lane_N exactly as before. Files that are genuinely too degenerate return
+    fewer than n_wanted pairs and drop out downstream, as they did previously.
+
+    lf_z / rf_z are the full (already low-pass filtered) foot-z arrays; lanes are
+    sliced out of them with each (start, end) pair."""
+    selected = []
+    for s, e in lane_frames:
+        if len(selected) >= n_wanted:
+            break
+        if len(foot_minima(lf_z[s:e])) > 0 and len(foot_minima(rf_z[s:e])) > 0:
+            selected.append([int(s), int(e)])
+    return selected
+
 #pass in an array like COM_x_new_time, subject number, and testtype (2 character)
 #outputs a dataframe with lane frames
 def get_frames(com, subject, test_type):
@@ -512,7 +538,7 @@ def get_frames(com, subject, test_type):
         
         #8/27/25 --> may need to redo to check values between start and end lanes...
         if sel == 9.999 and next != 9.999: #start of a lane
-            lane_idxs.append(int(idx))        
+            lane_idxs.append(int(idx) + 1)  # idx still holds the 9.999 sentinel; first real sample is idx+1
         #if sel != 9.999 and next == 9.999: #end of a lane
         if (sel != 9.999 and next == 9.999) and (lane_idxs): #don't add an "end" unless there's at east one sstart 9/4/25
             lane_idxs.append(int(idx))
