@@ -173,6 +173,12 @@ def main():
             continue
         for label, gcode, score_col in COHORTS:
             grp = df[df[GROUP_COL] == gcode]
+            # Descriptive stats of the T1 feature value within this cohort
+            # (mean +/- SD of the raw biomarker across the group's patients).
+            fx = pd.to_numeric(grp[feat], errors="coerce").dropna()
+            feat_mean = float(fx.mean()) if len(fx) else np.nan
+            feat_sd = float(fx.std(ddof=1)) if len(fx) > 1 else np.nan
+            feat_n = int(len(fx))
             # ICC(3,1) within group from T1<->T2
             icc = icc31(grp, feat, t2_feat)
             # Spearman: T1 feature vs clinical score within cohort
@@ -189,7 +195,9 @@ def main():
             comp = icc + abs(rho)
             rows.append({
                 "feature": feat, "system": system, "week": "T1", "test": test,
-                "metric": metric, "cohort": label, "ICC": icc, "n": n,
+                "metric": metric, "cohort": label,
+                "feat_n": feat_n, "feat_mean": feat_mean, "feat_sd": feat_sd,
+                "ICC": icc, "n": n,
                 "spearman_r": rho, "spearman_p": p, "comp_score": round(comp, 3),
                 "all_conditions_met": bool(icc >= ICC_THR and abs(rho) >= R_THR),
             })
