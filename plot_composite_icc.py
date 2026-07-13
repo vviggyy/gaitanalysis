@@ -28,17 +28,26 @@ import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 import numpy as np
 
-# Save vector SVG so charts stay editable in Illustrator; 'none' keeps text as
-# real <text> elements (editable/selectable) rather than outlined paths.
-FMT = "svg"
+# Save each chart as both SVG (editable in Illustrator) and PNG (for docs that
+# don't accept SVG). 'none' keeps SVG text as real <text> elements (editable)
+# rather than outlined paths.
+FORMATS = ("svg", "png")
 plt.rcParams["svg.fonttype"] = "none"
 
 HERE = pathlib.Path(__file__).resolve().parent
 COMPOSITE_CSV = (HERE.parent.parent /
-                 "Composite Scores - Averaged [JUNE 26 2026] - "
+                 "Composite Scores - Averaged [JULY 12 2026] - "
                  "SPEARMAN CORR + ICC MERGED, AVG, T1.csv")
-OUT = HERE / "out" / "071126"
+OUT = HERE / "out" / "071226"
 OUT.mkdir(parents=True, exist_ok=True)
+
+
+def _savefig(fig, out_dir, stem, **kw):
+    """Save a figure under `stem` in every format in FORMATS (SVG + PNG)."""
+    for ext in FORMATS:
+        path = pathlib.Path(out_dir) / f"{stem}.{ext}"
+        fig.savefig(path, **kw)
+        print(f"Saved {path}")
 
 # (cohort, test) in the long table  ->  display title
 CATEGORIES = [
@@ -156,10 +165,9 @@ def plot_individual(df, out_dir, tag, system=None, system_name=None,
 
         plt.tight_layout()
         sep = f"_{tag}" if tag else ""
-        fname = out_dir / f"icc_bar{sep}_{cohort.lower()}_{test.lower()}.{FMT}"
-        fig.savefig(fname, dpi=150)
+        _savefig(fig, out_dir, f"icc_bar{sep}_{cohort.lower()}_{test.lower()}",
+                 dpi=150)
         plt.close(fig)
-        print(f"Saved {fname}")
 
 
 # ── plot_combined ────────────────────────────────────────────────────
@@ -206,10 +214,8 @@ def plot_combined(df, out_dir, tag, system=None, system_name=None,
     fig.suptitle(f"ICC(3,1) — {top_str}Metrics ({label}, All Subjects)",
                  fontsize=14, fontweight="bold", y=0.98)
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-    fname = out_dir / f"icc_combined_{tag}.{FMT}"
-    fig.savefig(fname, dpi=150)
+    _savefig(fig, out_dir, f"icc_combined_{tag}", dpi=150)
     plt.close(fig)
-    print(f"Saved {fname}")
 
 
 # ── plot_multi_system ────────────────────────────────────────────────
@@ -293,7 +299,11 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
         else:
             suptitle = ("ICC(3,1) — All Systems ("
                         + ", ".join(SYSTEM_CODES.get(s, s) for s in systems) + ")")
-        fname = out_dir / f"icc_all_systems_combined.{FMT}"
+        # Tag the file with the per-system count so top-5 and top-10 charts
+        # don't overwrite each other (uniform N -> "top5"; mixed -> "persys").
+        vals = {n for n in top_n_per_system.values() if n is not None}
+        tag = f"top{vals.pop()}" if len(vals) == 1 else "persys"
+        stem = f"icc_all_systems_combined_{tag}"
         rect = [0, 0.035, 1, 0.99]
     else:
         fig.legend(handles=band_handles, loc="lower center", ncol=4, fontsize=9,
@@ -301,14 +311,13 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
                    columnspacing=1.5)
         suptitle = (f"ICC(3,1) — Top {top_n} Features per System ("
                     + ", ".join(SYSTEM_CODES.get(s, s) for s in systems) + ")")
-        fname = out_dir / f"icc_top{top_n}_all_systems.{FMT}"
+        stem = f"icc_top{top_n}_all_systems"
         rect = [0, 0.04, 1, 0.99]
 
     fig.suptitle(suptitle, fontsize=15, fontweight="bold", y=0.995)
     plt.tight_layout(rect=rect)
-    fig.savefig(fname, dpi=150, bbox_inches="tight")
+    _savefig(fig, out_dir, stem, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Saved {fname}")
 
 
 # ── __main__ ─────────────────────────────────────────────────────────
@@ -324,9 +333,11 @@ if __name__ == "__main__":
 
     # All-systems comparison (single file already holds every system).
     # Dict order follows SYSTEM_ORDER so the Arm + Leg Xsens groups stay adjacent.
-    plot_multi_system(df, OUT,
-                      top_n_per_system={"Myo": 10, "JT": None,
-                                        "Xsens": 10, "Arm": 10})
+    # System-colored charts at both top-5 and top-10 per system (JT keeps all 4).
+    for n in (5, 10):
+        plot_multi_system(df, OUT,
+                          top_n_per_system={"Myo": n, "JT": None,
+                                            "Xsens": n, "Arm": n})
     plot_multi_system(df, OUT, top_n=5)
 
     print("\nDone.")
