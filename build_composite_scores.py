@@ -118,7 +118,9 @@ def apply_lr_averaging(df):
                         continue
                     r_vals = pd.to_numeric(df[r_col], errors="coerce")
                     l_vals = pd.to_numeric(df[l_col], errors="coerce")
-                    df[avg_col] = (r_vals + l_vals) / 2.0
+                    # Insert the average at the R column's position (then drop R and L)
+                    # so the averaged column stays next to where its pair lived.
+                    df.insert(df.columns.get_loc(r_col), avg_col, (r_vals + l_vals) / 2.0)
                     df.drop(columns=[r_col, l_col], inplace=True)
     return df
 
