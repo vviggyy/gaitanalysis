@@ -35,7 +35,10 @@ warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parent   # the dir this script lives in (data CSVs sit beside it)
 INPUT_CSV = ROOT / "All_Results_T0T1_Arm_Gait_RECONCILED_062626_FINAL.csv"
-OUTPUT_CSV = ROOT / "Composite Scores - Averaged [JUNE 26 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
+OUTPUT_CSV = ROOT / "Composite Scores - Averaged [JULY 12 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
+# Wide feature table with every L/R pair replaced by its average (all four systems).
+# Mirrors the old avg_lr_*_and_icc.py "All_Results_LR_averaged.csv" output.
+OUTPUT_WIDE_CSV = ROOT / "All_Results_LR_averaged [JULY 12 2026].csv"
 
 GROUP_COL = "1ATX2PD0HEALTHY"   # 0 healthy, 1 ataxia, 2 PD
 UPDRS_COL = "UPDRS_T1"
@@ -143,6 +146,13 @@ def main():
     df["ID"] = df["ID"].astype(int)
     print("L/R averaging:")
     apply_lr_averaging(df)
+
+    # Emit the L/R-averaged WIDE feature table (all four systems). This is the
+    # feature side only and needs no clinical scores, so write it before the
+    # score check -- it is produced on every run.
+    df.to_csv(OUTPUT_WIDE_CSV, index=False)
+    print(f"Wrote averaged wide table: {OUTPUT_WIDE_CSV.name} "
+          f"({df.shape[0]} rows x {df.shape[1]} cols)")
 
     for col in (UPDRS_COL, SARA_COL, GROUP_COL):
         if col not in df.columns:
