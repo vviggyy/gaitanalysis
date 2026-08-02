@@ -38,7 +38,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 COMPOSITE_CSV = (HERE.parent.parent /
                  "Composite Scores - Averaged [JULY 12 2026] - "
                  "SPEARMAN CORR + ICC MERGED, AVG, T1.csv")
-OUT = HERE / "out" / "071226"
+OUT = HERE / "out" / "080226"
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -71,6 +71,30 @@ SYSTEM_LABELS = {"Xsens": "Xsens Leg Features", "Arm": "Xsens Arm Features",
                  "JT": "JTrack Smartphone", "Myo": "Force plate"}
 # short codes for titles (system column value → code)
 SYSTEM_CODES = {"Xsens": "Leg", "Arm": "Arm", "JT": "JT", "Myo": "FP"}
+# Slightly longer labels drawn beside each subplot's y-axis (the two Xsens
+# groups get disambiguated); titles keep the short SYSTEM_CODES above.
+SYSTEM_AXIS_LABELS = {"Xsens": "Xsens-Leg", "Arm": "Xsens-Arm",
+                      "JT": "JT", "Myo": "FP"}
+
+# Display-only relabeling of the German Force-plate (Myo) metric names to English.
+# Keyed by system so it can never touch a same-named metric in another system;
+# the underlying CSV columns are untouched. SD variants are normalized to a
+# uniform "...SD" suffix (drops the lone underscore the raw names carry).
+METRIC_LABELS = {
+    "Myo": {
+        "Fußrotation": "FootRotation",   "Fußrotation_SD": "FootRotationSD",
+        "Geschwindigkeit": "GaitSpeed",  "GeschwindigkeitSD": "GaitSpeedSD",
+        "Kadenz": "Cadence",             "KadenzSD": "CadenceSD",
+        "Schrittbreite": "StepWidth",    "SchrittbreiteSD": "StepWidthSD",
+        "Schrittzeit": "StepTime",       "SchrittzeitSD": "StepTimeSD",
+        # DoubleSupport% / DoubleSupport%SD are already English — left as-is.
+    },
+}
+
+
+def _display_label(system, metric):
+    """Metric name → figure label (English for Myo German names; else unchanged)."""
+    return METRIC_LABELS.get(system, {}).get(metric, metric)
 
 # Stacking order in the multi-system charts (list-last renders at the top), kept
 # so the two Xsens groups (Arm + Leg) sit next to each other rather than split
@@ -105,7 +129,12 @@ def _icc_arrays(df, cohort, test, system=None):
     if system is not None:
         sub = sub[sub["system"] == system]
     sub = sub.dropna(subset=["ICC"])
-    return sub["ICC"].to_numpy(), sub["metric"].to_numpy()
+    # Map each metric to its display label using its own system (German Myo
+    # names -> English). Row-wise on the system column so it's correct even if
+    # `sub` spans systems.
+    names = np.array([_display_label(s, m)
+                      for s, m in zip(sub["system"], sub["metric"])])
+    return sub["ICC"].to_numpy(), names
 
 
 def _sort_ascending(icc, names, top_n=None):
@@ -269,7 +298,10 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
         ax.set_yticklabels(labels, fontsize=6.5)
         ax.set_xlabel("ICC(3,1)", fontsize=9)
         ax.set_title(title, fontsize=12, fontweight="bold")
-        ax.set_xlim(X_LO, X_HI)
+        # Extra left headroom so the vertical system labels sit clearly in the
+        # margin rather than crowding the axis (esp. the short JT block).
+        ms_x_lo = X_LO - 0.15
+        ax.set_xlim(ms_x_lo, X_HI)
         ax.axvline(0, color="black", lw=0.5, ls="--", zorder=1)
 
         # separator lines between systems
@@ -278,6 +310,20 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
             if s != prev_sys:
                 ax.axhline(i - 0.5, color="black", lw=0.8, ls="-", zorder=3)
                 prev_sys = s
+
+        # System code beside the y-axis, centered on each stacked block, so the
+        # reader can name a system without consulting the legend. Sits in the
+        # empty negative-ICC strip at the far left (top-N charts don't use it).
+        start = 0
+        for i in range(len(sys_names) + 1):
+            if i == len(sys_names) or sys_names[i] != sys_names[start]:
+                mid = (start + i - 1) / 2.0
+                s = sys_names[start]
+                ax.text(ms_x_lo + 0.03, mid, SYSTEM_AXIS_LABELS.get(s, s),
+                        rotation=90, ha="center", va="center",
+                        fontsize=9, fontweight="bold",
+                        color=SYSTEM_COLORS.get(s, "#000000"), zorder=4)
+                start = i
 
     band_handles = [mpatches.Patch(facecolor=bg, alpha=0.35, label=l)
                     for _, _, bg, _, l in BANDS]
@@ -304,7 +350,7 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
         vals = {n for n in top_n_per_system.values() if n is not None}
         tag = f"top{vals.pop()}" if len(vals) == 1 else "persys"
         stem = f"icc_all_systems_combined_{tag}"
-        rect = [0, 0.035, 1, 0.99]
+        rect = [0, 0.075, 1, 0.99]
     else:
         fig.legend(handles=band_handles, loc="lower center", ncol=4, fontsize=9,
                    frameon=True, title="Reliability", title_fontsize=10,
@@ -312,7 +358,7 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
         suptitle = (f"ICC(3,1) — Top {top_n} Features per System ("
                     + ", ".join(SYSTEM_CODES.get(s, s) for s in systems) + ")")
         stem = f"icc_top{top_n}_all_systems"
-        rect = [0, 0.04, 1, 0.99]
+        rect = [0, 0.06, 1, 0.99]
 
     fig.suptitle(suptitle, fontsize=15, fontweight="bold", y=0.995)
     plt.tight_layout(rect=rect)
