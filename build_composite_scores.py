@@ -10,6 +10,9 @@ This consolidates the previously-separate steps:
 into one script that emits the long composite directly, matching:
   "Composite Scores - Averaged [JUNE 22 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
 
+After L/R averaging, a few Mocap-leg features are rescaled (UNIT_SCALES) so that
+features sharing a name across systems share units.
+
 Per T1 feature x cohort:
   - ICC   : ICC(3,1) test-retest (T1<->T2) within that disease group (pingouin ICC3)
   - spearman_r/p : T1 feature vs clinical score within that cohort
@@ -59,6 +62,21 @@ SYSTEM_RENAME = {"Myo": "FP", "Arm": "Mocap_Arm", "Xsens": "Mocap_Leg", "JT": "S
 # column and the averaged wide table's columns (the input FINAL sheet is never
 # written). Arm_/Myo_ prefixes are left as-is.
 FEATURE_PREFIX_RENAME = {"Xsens": "Mocap_Leg", "JT": "Smartphone"}
+
+# Unit harmonization, applied after L/R averaging (so to both the averaged wide
+# table and the composite), keyed on raw (system, metric). Puts features that
+# share a name across systems on the same scale:
+#   doublesupporttime : fraction -> percent (x100), matching FP DoubleSupport%
+#   Asymmetry*        : |L-R| / mean(L,R)  ->  |R-L| / (R+L) * 100  (x50),
+#                       matching the arm nondirectional asymmetry (ASI)
+# ICC(3,1) and Spearman are unchanged by a positive rescale; only feat_mean/feat_sd move.
+UNIT_SCALES = {
+    ("Xsens", "doublesupporttime"):     100.0,
+    ("Xsens", "AsymmetryStancetime"):   50.0,
+    ("Xsens", "AsymmetrySwingstime"):   50.0,
+    ("Xsens", "Asymmetrystridelength"): 50.0,
+    ("Xsens", "AsymmetryFmaxheight"):   50.0,
+}
 
 COHORTS = [
     # label,      group code, clinical score column
@@ -134,6 +152,18 @@ def apply_lr_averaging(df):
                     df.drop(columns=[r_col, l_col], inplace=True)
     return df
 
+def apply_unit_scales(df):
+    for (system, metric), factor in UNIT_SCALES.items():
+        for trial in ("T1", "T2"):
+            for tt in ("NG", "RG"):
+                col = f"{system}_{trial}_{tt}.{metric}"
+                # Fail loudly: a silently skipped scale would leave mixed units.
+                if col not in df.columns:
+                    raise SystemExit(f"Unit scaling: expected column '{col}' not found")
+                df[col] = pd.to_numeric(df[col], errors="coerce") * factor
+        print(f"  {system}.{metric}: x{factor:g}")
+    return df
+
 FEATURE_RE = re.compile(r"^(Arm|JT|Myo|Xsens)_T(\d+)_(NG|RG)\.(.+)$")
 
 def display_feature(col):
@@ -165,6 +195,8 @@ def main():
     df["ID"] = df["ID"].astype(int)
     print("L/R averaging:")
     apply_lr_averaging(df)
+    print("Unit scaling:")
+    apply_unit_scales(df)
 
     # Emit the L/R-averaged WIDE feature table (all four systems). This is the
     # feature side only and needs no clinical scores, so write it before the
