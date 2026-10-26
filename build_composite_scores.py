@@ -35,10 +35,10 @@ warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parent   # the dir this script lives in (data CSVs sit beside it)
 INPUT_CSV = ROOT / "All_Results_T0T1_Arm_Gait_RECONCILED_062626_FINAL.csv"
-OUTPUT_CSV = ROOT / "Composite Scores - Averaged [JULY 12 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
+OUTPUT_CSV = ROOT / "Composite Scores - Averaged [OCT 25 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
 # Wide feature table with every L/R pair replaced by its average (all four systems).
 # Mirrors the old avg_lr_*_and_icc.py "All_Results_LR_averaged.csv" output.
-OUTPUT_WIDE_CSV = ROOT / "All_Results_LR_averaged [JULY 12 2026].csv"
+OUTPUT_WIDE_CSV = ROOT / "All_Results_LR_averaged [OCT 25 2026].csv"
 
 GROUP_COL = "1ATX2PD0HEALTHY"   # 0 healthy, 1 ataxia, 2 PD
 UPDRS_COL = "UPDRS_T1"
@@ -49,6 +49,16 @@ R_THR = 0.3
 
 LR_SYSTEMS = ("Arm", "JT", "Myo", "Xsens")
 SYSTEMS = ("Arm", "JT", "Myo", "Xsens")
+
+# Output-only rename of the `system` column (raw column prefixes are left
+# untouched internally, so parsing/matching stays keyed on the raw names).
+# Xsens is split into arm vs leg and shown as Mocap; Myo -> FP; JT -> Smartphone.
+SYSTEM_RENAME = {"Myo": "FP", "Arm": "Mocap_Arm", "Xsens": "Mocap_Leg", "JT": "Smartphone"}
+
+# Output-only rename of raw column prefixes, applied to the composite `feature`
+# column and the averaged wide table's columns (the input FINAL sheet is never
+# written). Arm_/Myo_ prefixes are left as-is.
+FEATURE_PREFIX_RENAME = {"Xsens": "Mocap_Leg", "JT": "Smartphone"}
 
 COHORTS = [
     # label,      group code, clinical score column
@@ -126,6 +136,13 @@ def apply_lr_averaging(df):
 
 FEATURE_RE = re.compile(r"^(Arm|JT|Myo|Xsens)_T(\d+)_(NG|RG)\.(.+)$")
 
+def display_feature(col):
+    """Raw feature column name -> output name (Xsens_ -> Mocap_Leg_, JT_ -> Smartphone_)."""
+    m = FEATURE_RE.match(col)
+    if not m or m.group(1) not in FEATURE_PREFIX_RENAME:
+        return col
+    return f"{FEATURE_PREFIX_RENAME[m.group(1)]}_T{m.group(2)}_{m.group(3)}.{m.group(4)}"
+
 def icc31(df_group, t1_col, t2_col):
     """ICC(3,1) test-retest for one metric within one disease group."""
     pair = pd.DataFrame({
@@ -152,7 +169,7 @@ def main():
     # Emit the L/R-averaged WIDE feature table (all four systems). This is the
     # feature side only and needs no clinical scores, so write it before the
     # score check -- it is produced on every run.
-    df.to_csv(OUTPUT_WIDE_CSV, index=False)
+    df.rename(columns=display_feature).to_csv(OUTPUT_WIDE_CSV, index=False)
     print(f"Wrote averaged wide table: {OUTPUT_WIDE_CSV.name} "
           f"({df.shape[0]} rows x {df.shape[1]} cols)")
 
@@ -206,15 +223,27 @@ def main():
                 continue  # drop uncomputable rows (matches source)
             comp = icc + abs(rho)
             rows.append({
-                "feature": feat, "system": system, "week": "T1", "test": test,
+                "feature": display_feature(feat), "system": SYSTEM_RENAME.get(system, system),
+                "week": "T1", "test": test,
                 "metric": metric, "cohort": label,
                 "feat_n": feat_n, "feat_mean": feat_mean, "feat_sd": feat_sd,
                 "ICC": icc, "n": n,
-                "spearman_r": rho, "spearman_p": p, "comp_score": round(comp, 3),
+                "spearman_r": rho, "spearman_p": p, "comp_score": comp,
+                # Flag uses full-precision values, computed before display rounding.
                 "all_conditions_met": bool(icc >= ICC_THR and abs(rho) >= R_THR),
             })
 
     out = pd.DataFrame(rows).sort_values("comp_score", ascending=False).reset_index(drop=True)
+
+    # Uniform display precision (rounding here, after the flag/sort, keeps those
+    # decisions on full precision): continuous values to 3 dp; p-values to 3
+    # significant figures so tiny p's stay readable (e.g. 3.34e-05) instead of
+    # collapsing to 0.000.
+    for col in ("feat_mean", "feat_sd", "ICC", "spearman_r", "comp_score"):
+        out[col] = out[col].round(3)
+    out["spearman_p"] = out["spearman_p"].map(
+        lambda v: float(f"{v:.3g}") if pd.notna(v) else v)
+
     out.to_csv(OUTPUT_CSV, index=False)
     print(f"\nOutput: {OUTPUT_CSV.name}")
     print(f"rows: {len(out)} | systems: {out.system.value_counts().to_dict()} "

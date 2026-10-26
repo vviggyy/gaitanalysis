@@ -22,6 +22,7 @@ Three public functions (mirroring plot_icc.py):
 """
 
 import pathlib
+import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -36,9 +37,9 @@ plt.rcParams["svg.fonttype"] = "none"
 
 HERE = pathlib.Path(__file__).resolve().parent
 COMPOSITE_CSV = (HERE.parent.parent /
-                 "Composite Scores - Averaged [JULY 12 2026] - "
+                 "Composite Scores - Averaged [OCT 25 2026] - "
                  "SPEARMAN CORR + ICC MERGED, AVG, T1.csv")
-OUT = HERE / "out" / "080226"
+OUT = HERE / "out" / "102526"
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -64,24 +65,32 @@ BANDS = [
     (0.9,  1.01, "#9ecae1", "#337ab7", "Excellent (>0.9)"),
 ]
 
-# system code (as it appears in the long table's `system` column) → color / legend
-SYSTEM_COLORS = {"Xsens": "#7570b3", "JT": "#1b9e77", "Myo": "#d95f02",
-                 "Arm": "#e7298a"}
-SYSTEM_LABELS = {"Xsens": "Xsens Leg Features", "Arm": "Xsens Arm Features",
-                 "JT": "JTrack Smartphone", "Myo": "Force plate"}
+# Keys match the composite table's `system` column (renamed in
+# build_composite_scores.py: Myo->FP, Arm->Mocap_Arm, Xsens->Mocap_Leg,
+# JT->Smartphone).
+# system value → color / legend
+SYSTEM_COLORS = {"Mocap_Leg": "#7570b3", "Smartphone": "#1b9e77", "FP": "#d95f02",
+                 "Mocap_Arm": "#e7298a"}
+SYSTEM_LABELS = {"Mocap_Leg": "Mocap Leg Features", "Mocap_Arm": "Mocap Arm Features",
+                 "Smartphone": "Smartphone", "FP": "Force plate"}
 # short codes for titles (system column value → code)
-SYSTEM_CODES = {"Xsens": "Leg", "Arm": "Arm", "JT": "JT", "Myo": "FP"}
-# Slightly longer labels drawn beside each subplot's y-axis (the two Xsens
+SYSTEM_CODES = {"Mocap_Leg": "Leg", "Mocap_Arm": "Arm", "Smartphone": "Smartphone",
+                "FP": "FP"}
+# Slightly longer labels drawn beside each subplot's y-axis (the two Mocap
 # groups get disambiguated); titles keep the short SYSTEM_CODES above.
-SYSTEM_AXIS_LABELS = {"Xsens": "Xsens-Leg", "Arm": "Xsens-Arm",
-                      "JT": "JT", "Myo": "FP"}
+SYSTEM_AXIS_LABELS = {"Mocap_Leg": "Mocap-Leg", "Mocap_Arm": "Mocap-Arm",
+                      "Smartphone": "Smartphone", "FP": "FP"}
+# Composite tables written before the Oct-2026 rename carry the old system
+# names; map them on load so older tables still plot under the new labels.
+LEGACY_SYSTEM_NAMES = {"Xsens_Leg": "Mocap_Leg", "Xsens_Arm": "Mocap_Arm",
+                       "JT": "Smartphone"}
 
-# Display-only relabeling of the German Force-plate (Myo) metric names to English.
+# Display-only relabeling of the German Force-plate (FP) metric names to English.
 # Keyed by system so it can never touch a same-named metric in another system;
 # the underlying CSV columns are untouched. SD variants are normalized to a
 # uniform "...SD" suffix (drops the lone underscore the raw names carry).
 METRIC_LABELS = {
-    "Myo": {
+    "FP": {
         "Fußrotation": "FootRotation",   "Fußrotation_SD": "FootRotationSD",
         "Geschwindigkeit": "GaitSpeed",  "GeschwindigkeitSD": "GaitSpeedSD",
         "Kadenz": "Cadence",             "KadenzSD": "CadenceSD",
@@ -93,13 +102,13 @@ METRIC_LABELS = {
 
 
 def _display_label(system, metric):
-    """Metric name → figure label (English for Myo German names; else unchanged)."""
+    """Metric name → figure label (English for FP German names; else unchanged)."""
     return METRIC_LABELS.get(system, {}).get(metric, metric)
 
 # Stacking order in the multi-system charts (list-last renders at the top), kept
-# so the two Xsens groups (Arm + Leg) sit next to each other rather than split
+# so the two Mocap groups (Arm + Leg) sit next to each other rather than split
 # across the top and bottom of each panel.
-SYSTEM_ORDER = ("Myo", "JT", "Xsens", "Arm")
+SYSTEM_ORDER = ("FP", "Smartphone", "Mocap_Leg", "Mocap_Arm")
 
 # Lower x-limit for the bar axes. New-table ICCs can dip slightly negative
 # (min ≈ -0.18), so leave headroom below 0 rather than clipping at 0.2.
@@ -112,6 +121,7 @@ def load(csv_path=COMPOSITE_CSV):
     """Load the long composite table (ICC column coerced to float)."""
     df = pd.read_csv(csv_path)
     df["ICC"] = pd.to_numeric(df["ICC"], errors="coerce")
+    df["system"] = df["system"].replace(LEGACY_SYSTEM_NAMES)
     return df
 
 
@@ -254,7 +264,7 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
     """2×2 grid with multiple systems stacked per subplot → 1 PNG.
 
     systems: iteration/plot order of the `system` values to include.
-    top_n_per_system: dict like {"Xsens": 10, "JT": None, ...} — None keeps all
+    top_n_per_system: dict like {"Mocap_Leg": 10, "Smartphone": None, ...} — None keeps all
         features for that system. Takes precedence over top_n.
     """
     out_dir = pathlib.Path(out_dir)
@@ -299,7 +309,7 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
         ax.set_xlabel("ICC(3,1)", fontsize=9)
         ax.set_title(title, fontsize=12, fontweight="bold")
         # Extra left headroom so the vertical system labels sit clearly in the
-        # margin rather than crowding the axis (esp. the short JT block).
+        # margin rather than crowding the axis (esp. the short Smartphone block).
         ms_x_lo = X_LO - 0.15
         ax.set_xlim(ms_x_lo, X_HI)
         ax.axvline(0, color="black", lw=0.5, ls="--", zorder=1)
@@ -369,21 +379,22 @@ def plot_multi_system(df, out_dir, systems=SYSTEM_ORDER,
 # ── __main__ ─────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    df = load()
+    # Optional arg: path to a composite table (defaults to COMPOSITE_CSV).
+    df = load(sys.argv[1]) if len(sys.argv) > 1 else load()
 
     # Per-system individual + combined charts
-    for sys_name in ("Xsens", "JT", "Myo", "Arm"):
+    for sys_name in ("Mocap_Leg", "Smartphone", "FP", "Mocap_Arm"):
         plot_individual(df, OUT, sys_name.lower(), system=sys_name)
         plot_combined(df, OUT, sys_name.lower(), system=sys_name,
-                      top_n=10 if sys_name in ("Xsens", "Arm") else None)
+                      top_n=10 if sys_name in ("Mocap_Leg", "Mocap_Arm") else None)
 
     # All-systems comparison (single file already holds every system).
-    # Dict order follows SYSTEM_ORDER so the Arm + Leg Xsens groups stay adjacent.
-    # System-colored charts at both top-5 and top-10 per system (JT keeps all 4).
+    # Dict order follows SYSTEM_ORDER so the Arm + Leg Mocap groups stay adjacent.
+    # System-colored charts at both top-5 and top-10 per system (Smartphone keeps all 4).
     for n in (5, 10):
         plot_multi_system(df, OUT,
-                          top_n_per_system={"Myo": n, "JT": None,
-                                            "Xsens": n, "Arm": n})
+                          top_n_per_system={"FP": n, "Smartphone": None,
+                                            "Mocap_Leg": n, "Mocap_Arm": n})
     plot_multi_system(df, OUT, top_n=5)
 
     print("\nDone.")
