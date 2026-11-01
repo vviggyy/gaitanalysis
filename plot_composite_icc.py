@@ -5,10 +5,12 @@ Replaces plot_icc.py, which expected the OLD wide per-system ICC CSVs
 (one row per Metric; columns Ataxia_NG / PD_RG / ..._CI95). This reads the
 single long "Composite Scores" table instead:
 
-    feature, system, week, test, metric, cohort, ICC, n,
-    spearman_r, spearman_p, comp_score, all_conditions_met
+    feature, system, week, test, metric, metric_raw, cohort, ICC, n,
+    spearman_r, spearman_p, comp_score, all_conditions_met, remove
 
 Only the ICC column is used here (Spearman / composite are ignored for now).
+Features with remove = 1 are dropped on load, before any top-N selection, so they
+stay in the table but appear in no chart. `metric` is already the display name.
 The new table has NO CI95 column, so bars are drawn without error whiskers.
 
 The old 4 "categories" map onto (cohort, test) pairs in the long table:
@@ -37,9 +39,9 @@ plt.rcParams["svg.fonttype"] = "none"
 
 HERE = pathlib.Path(__file__).resolve().parent
 COMPOSITE_CSV = (HERE.parent.parent /
-                 "Composite Scores - Averaged [OCT 25 2026] - "
+                 "Composite Scores - Averaged [NOV 01 2026] - "
                  "SPEARMAN CORR + ICC MERGED, AVG, T1.csv")
-OUT = HERE / "out" / "102526"
+OUT = HERE / "out" / "110126"
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -80,30 +82,6 @@ SYSTEM_CODES = {"Mocap_Leg": "Leg", "Mocap_Arm": "Arm", "Smartphone": "Smartphon
 # groups get disambiguated); titles keep the short SYSTEM_CODES above.
 SYSTEM_AXIS_LABELS = {"Mocap_Leg": "Mocap-Leg", "Mocap_Arm": "Mocap-Arm",
                       "Smartphone": "Smartphone", "FP": "FP"}
-# Composite tables written before the Oct-2026 rename carry the old system
-# names; map them on load so older tables still plot under the new labels.
-LEGACY_SYSTEM_NAMES = {"Xsens_Leg": "Mocap_Leg", "Xsens_Arm": "Mocap_Arm",
-                       "JT": "Smartphone"}
-
-# Display-only relabeling of the German Force-plate (FP) metric names to English.
-# Keyed by system so it can never touch a same-named metric in another system;
-# the underlying CSV columns are untouched. SD variants are normalized to a
-# uniform "...SD" suffix (drops the lone underscore the raw names carry).
-METRIC_LABELS = {
-    "FP": {
-        "Fußrotation": "FootRotation",   "Fußrotation_SD": "FootRotationSD",
-        "Geschwindigkeit": "GaitSpeed",  "GeschwindigkeitSD": "GaitSpeedSD",
-        "Kadenz": "Cadence",             "KadenzSD": "CadenceSD",
-        "Schrittbreite": "StepWidth",    "SchrittbreiteSD": "StepWidthSD",
-        "Schrittzeit": "StepTime",       "SchrittzeitSD": "StepTimeSD",
-        # DoubleSupport% / DoubleSupport%SD are already English — left as-is.
-    },
-}
-
-
-def _display_label(system, metric):
-    """Metric name → figure label (English for FP German names; else unchanged)."""
-    return METRIC_LABELS.get(system, {}).get(metric, metric)
 
 # Stacking order in the multi-system charts (list-last renders at the top), kept
 # so the two Mocap groups (Arm + Leg) sit next to each other rather than split
@@ -118,11 +96,16 @@ X_LO, X_HI = -0.25, 1.05
 # ── helpers ──────────────────────────────────────────────────────────
 
 def load(csv_path=COMPOSITE_CSV):
-    """Load the long composite table (ICC column coerced to float)."""
+    """Load the long composite table (ICC coerced to float), minus remove = 1 rows."""
     df = pd.read_csv(csv_path)
+    # Fail loudly: plotting a table with no flags would silently show every feature.
+    if "remove" not in df.columns:
+        raise SystemExit(f"No `remove` column in {pathlib.Path(csv_path).name}: "
+                         "plot a table written by the current build_composite_scores.py.")
     df["ICC"] = pd.to_numeric(df["ICC"], errors="coerce")
-    df["system"] = df["system"].replace(LEGACY_SYSTEM_NAMES)
-    return df
+    kept = df[df["remove"] != 1].copy()
+    print(f"Hiding {len(df) - len(kept)} of {len(df)} rows flagged remove = 1")
+    return kept
 
 
 def band_color(val):
@@ -139,12 +122,7 @@ def _icc_arrays(df, cohort, test, system=None):
     if system is not None:
         sub = sub[sub["system"] == system]
     sub = sub.dropna(subset=["ICC"])
-    # Map each metric to its display label using its own system (German Myo
-    # names -> English). Row-wise on the system column so it's correct even if
-    # `sub` spans systems.
-    names = np.array([_display_label(s, m)
-                      for s, m in zip(sub["system"], sub["metric"])])
-    return sub["ICC"].to_numpy(), names
+    return sub["ICC"].to_numpy(), sub["metric"].to_numpy()
 
 
 def _sort_ascending(icc, names, top_n=None):

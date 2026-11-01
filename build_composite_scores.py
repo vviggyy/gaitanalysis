@@ -13,6 +13,11 @@ into one script that emits the long composite directly, matching:
 After L/R averaging, a few Mocap-leg and FP features are rescaled (UNIT_SCALES) so
 that features sharing a name across systems share units.
 
+Metric names and remove flags come from the rename sheet (RENAME_XLSX). They only
+affect what is written: every calculation stays keyed on the raw names. Flagged
+features stay in both output tables (`remove` = 1 in the composite) and are hidden
+by plot_composite_icc.py.
+
 Per T1 feature x cohort:
   - ICC   : ICC(3,1) test-retest (T1<->T2) within that disease group (pingouin ICC3)
   - spearman_r/p : T1 feature vs clinical score within that cohort
@@ -38,10 +43,12 @@ warnings.filterwarnings("ignore")
 
 ROOT = Path(__file__).resolve().parent   # the dir this script lives in (data CSVs sit beside it)
 INPUT_CSV = ROOT / "All_Results_T0T1_Arm_Gait_RECONCILED_062626_FINAL.csv"
-OUTPUT_CSV = ROOT / "Composite Scores - Averaged [OCT 25 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
+OUTPUT_CSV = ROOT / "Composite Scores - Averaged [NOV 01 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
 # Wide feature table with every L/R pair replaced by its average (all four systems).
 # Mirrors the old avg_lr_*_and_icc.py "All_Results_LR_averaged.csv" output.
-OUTPUT_WIDE_CSV = ROOT / "All_Results_LR_averaged [OCT 25 2026].csv"
+OUTPUT_WIDE_CSV = ROOT / "All_Results_LR_averaged [NOV 01 2026].csv"
+# Metric rename + remove flags. Lives at the INM root, beside both code dirs.
+RENAME_XLSX = ROOT.parent / "FEATURE_RENAME_v3.xlsx"
 
 GROUP_COL = "1ATX2PD0HEALTHY"   # 0 healthy, 1 ataxia, 2 PD
 UPDRS_COL = "UPDRS_T1"
@@ -169,12 +176,67 @@ def apply_unit_scales(df):
 
 FEATURE_RE = re.compile(r"^(Arm|JT|Myo|Xsens)_T(\d+)_(NG|RG)\.(.+)$")
 
-def display_feature(col):
-    """Raw feature column name -> output name (Xsens_ -> Mocap_Leg_, JT_ -> Smartphone_)."""
+def _unmangle_sheet_name(s):
+    """Repair the sheet's garbled Fußrotation (ß re-read through Mac Roman by Excel)."""
+    try:
+        return s.encode("mac_roman").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+
+def load_feature_map(path=RENAME_XLSX):
+    """Read the rename sheet -> {(raw system, raw metric): {"name": str, "remove": 0|1}}.
+
+    The sheet has one row per T1 feature x cohort, but names and flags are per
+    metric: a name sits on one of the metric's four rows, and a 1 on any of them
+    flags the whole metric (both tests, both cohorts).
+    """
+    sheet = pd.read_excel(path)
+    sheet.columns = [str(c).strip() for c in sheet.columns]
+    names, flags, problems = {}, {}, []
+    for feature, name, remove in zip(sheet["feature"], sheet["RENAMED FEATURE"], sheet["Remove"]):
+        feature = _unmangle_sheet_name(feature)
+        m = FEATURE_RE.match(feature)
+        if not m:
+            problems.append(f"unparseable feature: {feature}")
+            continue
+        if remove not in (0, 1):
+            problems.append(f"Remove must be 0 or 1: {feature} = {remove!r}")
+        key = (m.group(1), m.group(4))
+        names.setdefault(key, set())
+        if pd.notna(name):
+            names[key].add(str(name).strip())
+        flags[key] = max(flags.get(key, 0), int(remove == 1))
+
+    feature_map, taken = {}, {}
+    for key, found in names.items():
+        if len(found) != 1:
+            problems.append(f"need exactly one name, found {sorted(found)}: {key}")
+            continue
+        name = next(iter(found))
+        first = taken.setdefault((key[0], name), key)
+        if first != key:
+            problems.append(f"'{name}' used by both {first[1]} and {key[1]} in {key[0]}")
+        feature_map[key] = {"name": name, "remove": flags[key]}
+    if problems:
+        raise SystemExit(f"Rename sheet {Path(path).name}:\n  " + "\n  ".join(problems))
+    return feature_map
+
+def check_feature_map(feature_map, df):
+    """Stop if the sheet and the averaged table disagree about which metrics exist."""
+    current = {(m.group(1), m.group(4)) for c in df.columns if (m := FEATURE_RE.match(c))}
+    missing, extra = sorted(current - set(feature_map)), sorted(set(feature_map) - current)
+    if missing or extra:
+        raise SystemExit(f"Rename sheet out of step with the data. Missing from sheet: {missing}. "
+                         f"In sheet but not in data: {extra}")
+
+def display_feature(col, feature_map):
+    """Raw feature column -> output name: renamed metric, Xsens_/JT_ prefixes renamed."""
     m = FEATURE_RE.match(col)
-    if not m or m.group(1) not in FEATURE_PREFIX_RENAME:
+    if not m:
         return col
-    return f"{FEATURE_PREFIX_RENAME[m.group(1)]}_T{m.group(2)}_{m.group(3)}.{m.group(4)}"
+    system, trial, test, metric = m.groups()
+    prefix = FEATURE_PREFIX_RENAME.get(system, system)
+    return f"{prefix}_T{trial}_{test}.{feature_map[(system, metric)]['name']}"
 
 def icc31(df_group, t1_col, t2_col):
     """ICC(3,1) test-retest for one metric within one disease group."""
@@ -201,10 +263,16 @@ def main():
     print("Unit scaling:")
     apply_unit_scales(df)
 
+    feature_map = load_feature_map()
+    check_feature_map(feature_map, df)
+    print(f"Feature map: {RENAME_XLSX.name}: {len(feature_map)} metrics, "
+          f"{sum(v['remove'] for v in feature_map.values())} flagged remove "
+          "(kept in tables, hidden in plots)")
+
     # Emit the L/R-averaged WIDE feature table (all four systems). This is the
     # feature side only and needs no clinical scores, so write it before the
     # score check -- it is produced on every run.
-    df.rename(columns=display_feature).to_csv(OUTPUT_WIDE_CSV, index=False)
+    df.rename(columns=lambda c: display_feature(c, feature_map)).to_csv(OUTPUT_WIDE_CSV, index=False)
     print(f"Wrote averaged wide table: {OUTPUT_WIDE_CSV.name} "
           f"({df.shape[0]} rows x {df.shape[1]} cols)")
 
@@ -235,6 +303,7 @@ def main():
         t2_feat = f"{system}_T2_{test}.{metric}"
         if t2_feat not in df.columns:
             continue
+        info = feature_map[(system, metric)]
         for label, gcode, score_col in COHORTS:
             grp = df[df[GROUP_COL] == gcode]
             # Descriptive stats of the T1 feature value within this cohort
@@ -258,14 +327,17 @@ def main():
                 continue  # drop uncomputable rows (matches source)
             comp = icc + abs(rho)
             rows.append({
-                "feature": display_feature(feat), "system": SYSTEM_RENAME.get(system, system),
+                "feature": display_feature(feat, feature_map),
+                "system": SYSTEM_RENAME.get(system, system),
                 "week": "T1", "test": test,
-                "metric": metric, "cohort": label,
+                "metric": info["name"], "metric_raw": metric, "cohort": label,
                 "feat_n": feat_n, "feat_mean": feat_mean, "feat_sd": feat_sd,
                 "ICC": icc, "n": n,
                 "spearman_r": rho, "spearman_p": p, "comp_score": comp,
                 # Flag uses full-precision values, computed before display rounding.
                 "all_conditions_met": bool(icc >= ICC_THR and abs(rho) >= R_THR),
+                # 1 = hide in plots; the row stays in this table either way.
+                "remove": info["remove"],
             })
 
     out = pd.DataFrame(rows).sort_values("comp_score", ascending=False).reset_index(drop=True)
