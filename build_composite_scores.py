@@ -10,8 +10,8 @@ This consolidates the previously-separate steps:
 into one script that emits the long composite directly, matching:
   "Composite Scores - Averaged [JUNE 22 2026] - SPEARMAN CORR + ICC MERGED, AVG, T1.csv"
 
-After L/R averaging, a few Mocap-leg features are rescaled (UNIT_SCALES) so that
-features sharing a name across systems share units.
+After L/R averaging, a few Mocap-leg and FP features are rescaled (UNIT_SCALES) so
+that features sharing a name across systems share units.
 
 Per T1 feature x cohort:
   - ICC   : ICC(3,1) test-retest (T1<->T2) within that disease group (pingouin ICC3)
@@ -69,6 +69,7 @@ FEATURE_PREFIX_RENAME = {"Xsens": "Mocap_Leg", "JT": "Smartphone"}
 #   doublesupporttime : fraction -> percent (x100), matching FP DoubleSupport%
 #   Asymmetry*        : |L-R| / mean(L,R)  ->  |R-L| / (R+L) * 100  (x50),
 #                       matching the arm nondirectional asymmetry (ASI)
+#   Schrittbreite(SD) : FP cm -> m (x0.01), matching the Mocap lengths
 # ICC(3,1) and Spearman are unchanged by a positive rescale; only feat_mean/feat_sd move.
 UNIT_SCALES = {
     ("Xsens", "doublesupporttime"):     100.0,
@@ -76,6 +77,8 @@ UNIT_SCALES = {
     ("Xsens", "AsymmetrySwingstime"):   50.0,
     ("Xsens", "Asymmetrystridelength"): 50.0,
     ("Xsens", "AsymmetryFmaxheight"):   50.0,
+    ("Myo",   "Schrittbreite"):         0.01,
+    ("Myo",   "SchrittbreiteSD"):       0.01,
 }
 
 COHORTS = [
